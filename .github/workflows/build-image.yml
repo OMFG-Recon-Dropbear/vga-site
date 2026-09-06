@@ -4,6 +4,10 @@ name: Build and publish container image
 # The Synology NAS pulls ghcr.io/<owner>/vga-site:latest (see docker-compose.yml). Source can be either
 # checked in normally, or uploaded as split zip parts at the repo root (vga-site-src.zip.part-00, -01, …)
 # when pushing via the GitHub web UI is the only option.
+#
+# Repository variables (Settings → Secrets and variables → Actions → Variables):
+#   NEXT_PUBLIC_SITE_URL  canonical/OG/sitemap base (default: staging host)
+#   SITE_NOINDEX          '1' = staging build with noindex (default); set to '' for the production build
 
 on:
   push:
@@ -56,5 +60,6 @@ jobs:
             ${{ steps.meta.outputs.image }}:${{ github.sha }}
           build-args: |
             NEXT_PUBLIC_SITE_URL=${{ vars.NEXT_PUBLIC_SITE_URL || 'https://vga.disruptivelabs.com.au' }}
+            SITE_NOINDEX=${{ vars.SITE_NOINDEX || '1' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
