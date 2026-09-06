@@ -1,0 +1,60 @@
+name: Build and publish container image
+
+# Builds the Next.js site into a container image and pushes it to GitHub Container Registry.
+# The Synology NAS pulls ghcr.io/<owner>/vga-site:latest (see docker-compose.yml). Source can be either
+# checked in normally, or uploaded as split zip parts at the repo root (vga-site-src.zip.part-00, -01, …)
+# when pushing via the GitHub web UI is the only option.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["docs/**", "README.md"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm # ARM64 to match the Synology DS; use ubuntu-latest for x86-64 hosts
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unpack source zip parts (web-upload path)
+        id: src
+        run: |
+          set -e
+          if ls vga-site-src.zip.part-* >/dev/null 2>&1; then
+            cat vga-site-src.zip.part-* > /tmp/src.zip
+            mkdir -p /tmp/src && unzip -q /tmp/src.zip -d /tmp/src
+            echo "dir=/tmp/src" >> "$GITHUB_OUTPUT"
+            ls /tmp/src
+          elif [ -f vga-site-src.zip ]; then
+            mkdir -p /tmp/src && unzip -q vga-site-src.zip -d /tmp/src
+            echo "dir=/tmp/src" >> "$GITHUB_OUTPUT"
+          else
+            echo "dir=." >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        run: echo "image=$(echo 'ghcr.io/${{ github.repository_owner }}/vga-site' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ steps.src.outputs.dir }}
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}:latest
+            ${{ steps.meta.outputs.image }}:${{ github.sha }}
+          build-args: |
+            NEXT_PUBLIC_SITE_URL=${{ vars.NEXT_PUBLIC_SITE_URL || 'https://vga.disruptivelabs.com.au' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
